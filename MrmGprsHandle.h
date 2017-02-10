@@ -286,16 +286,16 @@ public:
 	std::condition_variable mwaitGprsCloseOk;
 	bool bGprsCloseOk;
 
-	std::mutex mtxGprsSendStart;//
-	std::condition_variable mwaitGprsSendStart;
+	//std::mutex mtxGprsSendStart;//
+	//std::condition_variable mwaitGprsSendStart;
 	bool bGprsSendStart;
 
-	std::mutex mtxGprsSendOk;//
-	std::condition_variable mwaitGprsSendOk;
+	//std::mutex mtxGprsSendOk;//
+	//std::condition_variable mwaitGprsSendOk;
 	bool bGprsSendOk;
 
-	std::mutex mtxGprsSendFailed;//
-	std::condition_variable mwaitGprsSendFailed;
+	//std::mutex mtxGprsSendFailed;//
+	//std::condition_variable mwaitGprsSendFailed;
 	bool bGprsSendFailed;
 
 	bool GprsBooting();
@@ -304,6 +304,8 @@ public:
 	bool EnterCSDMode();
 	bool RetireCSDMode();
 	bool RetireGPRSMode();
+
+	bool GprsDataSend(_SendDataNet& pSendDataNet);
 };
 
 #endif

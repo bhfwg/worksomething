@@ -1265,6 +1265,66 @@ void FrameGenerate::GetFrame_ATCommandToZhuanHuan(_SendData& pSendData, byte bDe
 	pSendData.vSendData[2] = (pSendData.iLength % 256);
 
 }
+void FrameGenerate::GetFrame_GprsDataToZhuanHuan(_SendData& pSendData, byte bDestCode,byte bZongXian, byte bPriority,byte bNeedAckFlag,byte bFrameType
+		,_SendDataNet& pSendDataNet)
+{
+	byte bFeature = 0x00;
+	bFeature |= BIT6;//01：3.0数据帧
+	if(bNeedAckFlag ==0 )
+	{
+		bFeature &= MSK4;//0：不要求应答
+	}
+	else
+	{
+		bFeature |= BIT4;//1：要求应答
+	}
+	pSendData.bNeedAckFlag = bNeedAckFlag;
+	pSendData.bPriority = bPriority;
+	pSendData.bZongXian = bZongXian;
+	pSendData.bDestCode = bDestCode;
+	pSendData.bType = bFrameType;
+
+	bFeature &= MSK5;//0：基础帧
+	pSendData.vSendData.push_back(bFeature);//后面需要修改:重发标识+流水号
+	pSendData.iLength++;
+
+	pSendData.vSendData.push_back(pSendData.iLength / 256); //后面需要修改
+	pSendData.iLength++;
+	pSendData.vSendData.push_back(pSendData.iLength % 256);
+	pSendData.iLength++;
+	pSendData.vSendData.push_back(mTrainState->bZhuKongFlag);// 源端口
+	pSendData.iLength++;
+	pSendData.vSendData.push_back(0);// 源通信地址长度
+	pSendData.iLength++;
+	pSendData.vSendData.push_back(bDestCode);// 目的端口
+	pSendData.iLength++;
+	pSendData.vSendData.push_back(0);// 目的通信地址长度
+	pSendData.iLength++;
+	pSendData.vSendData.push_back(0x01);// 业务类型
+	pSendData.iLength++;
+	pSendData.vSendData.push_back(0x04);// gprs数据命令
+	pSendData.iLength++;
+	int i=0;
+	for( i=0; i<pSendDataNet.vSendData.size(); i++)
+	{
+		pSendData.vSendData.push_back(pSendDataNet.vSendData[i]);
+		pSendData.iLength++;
+	}
+
+	//pSendData.vSendData.push_back(0x0d);
+	//pSendData.iLength++;
+	//pSendData.vSendData.push_back(0x0a);
+	//pSendData.iLength++;
+
+	pSendData.vSendData.push_back(0xFF);//CRC16
+	pSendData.iLength++;
+	pSendData.vSendData.push_back(0xFF);//CRC16
+	pSendData.iLength++;
+
+	pSendData.vSendData[1] = (pSendData.iLength / 256); //后面需要修改
+	pSendData.vSendData[2] = (pSendData.iLength % 256);
+
+}
 void FrameGenerate::GetFrame_InitNetworkInfo(_SendData& pSendData, byte bDestCode,byte bZongXian, byte bPriority,byte bNeedAckFlag
 		,byte bFrameType)
 {

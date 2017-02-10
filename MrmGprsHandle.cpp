@@ -1,6 +1,7 @@
 
 
 #include "MrmGprsHandle.h"
+
 using namespace std;
 MrmGprsHandle::MrmGprsHandle()
 {
@@ -1588,9 +1589,12 @@ void MrmGprsHandle::HandleAtCommandThread()
 						{
 							{
 								bGprsSendStart = true;
-								std::unique_lock<std::mutex> lck(mtxGprsSendStart);
-								mwaitGprsSendStart.notify_all();
-								mLogInstance->Log(tag + "mwaitGprsSendStart is notify");
+								//std::unique_lock<std::mutex> lck(mtxGprsSendStart);
+								//mwaitGprsSendStart.notify_all();
+								//mLogInstance->Log(tag + "mwaitGprsSendStart is notify");
+								std::unique_lock<std::mutex> lck(mtxGprsOk);
+								mwaitGprsOk.notify_all();
+								mLogInstance->Log(tag + "mwaitGprsOk is notify");
 							}
 						}
 						else
@@ -1607,9 +1611,12 @@ void MrmGprsHandle::HandleAtCommandThread()
 
 						{
 							bGprsSendOk = true;
-							std::unique_lock<std::mutex> lck(mtxGprsSendOk);
-							mwaitGprsSendOk.notify_all();
-							mLogInstance->Log(tag + "mwaitGprsSendOk is notify");
+							//std::unique_lock<std::mutex> lck(mtxGprsSendOk);
+							//mwaitGprsSendOk.notify_all();
+							//mLogInstance->Log(tag + "mwaitGprsSendOk is notify");
+							std::unique_lock<std::mutex> lck(mtxGprsOk);
+							mwaitGprsOk.notify_all();
+							mLogInstance->Log(tag + "mwaitGprsOk is notify");
 						}
 					}
 					else if((strAtCommand.size()>=9 && strAtCommand.substr(0,9).compare("SEND FAIL") == 0))
@@ -1621,9 +1628,12 @@ void MrmGprsHandle::HandleAtCommandThread()
 
 						{
 							bGprsSendFailed = true;
-							std::unique_lock<std::mutex> lck(mtxGprsSendFailed);
-							mwaitGprsSendFailed.notify_all();
-							mLogInstance->Log(tag + "mwaitGprsSendFailed is notify");
+							//std::unique_lock<std::mutex> lck(mtxGprsSendFailed);
+							//mwaitGprsSendFailed.notify_all();
+							//mLogInstance->Log(tag + "mwaitGprsSendFailed is notify");
+							std::unique_lock<std::mutex> lck(mtxGprsOk);
+							mwaitGprsOk.notify_all();
+							mLogInstance->Log(tag + "mwaitGprsOk is notify");
 						}
 					}
 					else if((strAtCommand.size()>=11 && strAtCommand.substr(0,11).compare("+PDP: DEACT") == 0)
@@ -1729,6 +1739,7 @@ void MrmGprsHandle::SendGprsDataThread()
 
 					_SendDataNet pSendDataNet = listGprsData.front();
 
+					GprsDataSend(pSendDataNet);
 
 					if(!listGprsData.empty())
 						listGprsData.pop_front();
@@ -5473,4 +5484,170 @@ bool MrmGprsHandle::RetireGPRSMode()
 
 	mLogInstance->Log(tag+"RetireGPRSMode out bad");
 	return false;
+}
+
+bool MrmGprsHandle::GprsDataSend(_SendDataNet& pSendDataNet)
+{//GPRS数据发送
+	mLogInstance->Log(tag+"GprsDataSend in");
+
+	if(bGprsStatus == 0x01)
+	{//不是GPRS空闲模式，返回失败
+		mLogInstance->Log(tag+"GprsDataSend out bad, not 0x01");
+		return false;
+	}
+	bGprsStatus = 0x03;
+
+	//////////////////关闭UDP连接///////////////////////
+	bGprsOk = false;
+	SendAT("AT+CIPCLOSE");
+	{
+		std::unique_lock <std::mutex> lck(mtxGprsOk);
+		if(mwaitGprsOk.wait_for(lck, std::chrono::milliseconds(1000),[this]{ return bGprsOk; })) //不必等正确的应答，因为发送此命令之前，可能已经处于连接断开状态
+		{
+			mLogInstance->Log(tag+"AT+CIPCLOSE answer ok");//mLogInstance->Log(tag+"mrmok is answered");
+		}
+		else
+		{
+			mLogInstance->Log(tag+"AT+CIPCLOSE answer none");//mLogInstance->Log(tag+"can not wait mrmok");
+		}
+	}
+	std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+
+	bGprsConnectOk = false;
+	bGprsAlreadyConnect = false;
+
+	//char s[12];	itoa(pSendDataNet.iDestinationPort,s,10); std::string strPort = s;
+	std::stringstream ss;
+	ss<<pSendDataNet.iDestinationPort;
+	std::string strPort = ss.str();
+
+	SendAT("AT+CIPSTART=\"UDP\",\"" + pSendDataNet.strDestinationIPAddress + "\",\"+ strPort +\"");
+	{
+		std::unique_lock <std::mutex> lck2(mtxGprsOk);
+		if(mwaitGprsOk.wait_for(lck2, std::chrono::milliseconds(3000),[this]{ return ( bGprsAlreadyConnect | bGprsConnectOk ); }))
+		{
+			if( bGprsAlreadyConnect || bGprsConnectOk)
+			{
+				mLogInstance->Log(tag+"AT+CIPSTART=\"UDP\", answer connect ok");
+				strDestinationIPAddress = pSendDataNet.strDestinationIPAddress;
+				strDestinationPort = strPort;
+				std::this_thread::sleep_for(std::chrono::milliseconds(200));
+			}
+		}
+		else
+		{
+			mLogInstance->Log(tag+"AT+CIPSTART=\"UDP\" answer none");
+		}
+	}
+
+	//////////////////设置发送数据的长度///////////////////////
+	int counter = 3, i=0;
+	for(i=0;i<counter;i++)
+	{
+		bGprsSendStart = false;
+		bGprsError = false;
+
+		//char s1[12];	itoa(pSendDataNet.vSendData.size(),s1,10); std::string strLen = s1;
+		ss.clear();
+		ss<<pSendDataNet.vSendData.size();
+		std::string strLen = ss.str();
+
+		SendAT("AT+CIPSEND="+strLen);//
+		{
+			std::unique_lock <std::mutex> lck2(mtxGprsOk);
+			if(mwaitGprsOk.wait_for(lck2, std::chrono::milliseconds(5000),[this]{ return ( bGprsError | bGprsSendStart); }))
+			{
+				if(bGprsSendStart)
+				{
+					mLogInstance->Log(tag+"AT+CIPSEND= answer ok");
+					break;
+				}
+				else if(bGprsError)
+				{
+					mLogInstance->Log(tag+"AT+CIPSEND= answer error");
+				}
+			}
+			else
+			{
+				mLogInstance->Log(tag+"AT+CIPSEND= answer none");
+			}
+		}
+		std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+	}
+	if(i >= counter)
+	{
+		if(bGprsStatus==0x03)
+			bGprsStatus = 0x01;
+		bGprsStatusBefore = 0xff;
+		mLogInstance->Log(tag+"GprsDataSend out bad");
+		return false;
+	}
+
+	for(i=0;i<counter;i++)
+	{
+		bGprsSendFailed = false;
+		bGprsSendOk = false;
+
+//		char s1[12];	itoa(pSendDataNet.vSendData.size(),s1,10); std::string strLen = s1;
+//		std::string strSendData="";
+//		SendAT(strSendData);//
+//		{
+//			std::unique_lock <std::mutex> lck2(mtxGprsOk);
+//			if(mwaitGprsOk.wait_for(lck2, std::chrono::milliseconds(5000),[this]{ return ( bGprsSendOk | bGprsSendFailed); }))
+//			{
+//				if(bGprsSendOk)
+//				{
+//					mLogInstance->Log(tag+"send data ok");
+//					break;
+//				}
+//				else if(bGprsSendFailed)
+//				{
+//					mLogInstance->Log(tag+"send data failed");
+//				}
+//			}
+//			else
+//			{
+//				mLogInstance->Log(tag+"send data answer none");
+//			}
+//		}
+//		std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+		_SendData  pSendData;
+		mFrameGenerate.GetFrame_GprsDataToZhuanHuan(pSendData,bPort,mTrainState->bZongXian,PRIORITY0,ACK0,BASEFRAME,pSendDataNet);//ACK2//暂时注释
+		mDataProcesser.SendInfoForCan(pSendData);
+		{
+			std::unique_lock <std::mutex> lck2(mtxGprsOk);
+			if(mwaitGprsOk.wait_for(lck2, std::chrono::milliseconds(5000),[this]{ return ( bGprsSendOk | bGprsSendFailed); }))
+			{
+				if(bGprsSendOk)
+				{
+					mLogInstance->Log(tag+"send data ok");
+					break;
+				}
+				else if(bGprsSendFailed)
+				{
+					mLogInstance->Log(tag+"send data failed");
+				}
+			}
+			else
+			{
+				mLogInstance->Log(tag+"send data answer none");
+			}
+		}
+		std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+	}
+	if(i >= counter)
+	{
+		if(bGprsStatus==0x03)
+			bGprsStatus = 0x01;
+		bGprsStatusBefore = 0xff;
+		mLogInstance->Log(tag+"GprsDataSend out bad");
+		return false;
+	}
+
+	if(bGprsStatus==0x03)
+		bGprsStatus = 0x01;
+	bGprsStatusBefore = 0xff;
+	mLogInstance->Log(tag+"GprsDataSend out ok");
+	return true;
 }

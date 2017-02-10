@@ -360,6 +360,31 @@ void DataProcesser::SendInfoForGprs(_SendDataNet& pSendDataNet)
 	}
 	std::cout<<std::endl<<std::endl;
 
+	MrmGprsHandle* mMrmGprsHandle ;
+	if(mMrmGprsHandle0->bActor == GPRS_MODE)
+	{
+		mMrmGprsHandle = mMrmGprsHandle0;
+
+		if(mMrmGprsHandle1->bActor == GPRS_MODE)
+			mLogInstance->Log("gprs mode is not right");
+	}
+	else if(mMrmGprsHandle1->bActor == GPRS_MODE)
+	{
+		mMrmGprsHandle = mMrmGprsHandle1;
+	}
+	else
+		mLogInstance->Log("gprs mode is not right");
+
+	try
+	{
+		std::unique_lock <std::mutex> lck(mMrmGprsHandle->mtx_GprsData);
+		mMrmGprsHandle->listGprsData.push_back(pSendDataNet);
+		mMrmGprsHandle->mwaitGprsData.notify_all();
+	}
+	catch(...)
+	{
+		mLogInstance->Log("push atcommand list to wrong");
+	}
 }
 void DataProcesser::SendInfoForCan(_SendData& pSendData)
 {
@@ -1292,19 +1317,6 @@ void DataProcesser::subApplyForDataFromMMI(_RawInfo& PackageInfo)
 			mTrainState->bMainMMI = PackageInfo.bSourCode;
 		}
 
-		MrmGprsHandle* mMrmGprsHandle ;
-		if(mMrmGprsHandle0->bActor == MRM_MODE)
-		{
-			mMrmGprsHandle = mMrmGprsHandle0;
-
-			if(mMrmGprsHandle1->bActor == MRM_MODE)
-				mLogInstance->Log("mrm mode is not right");
-		}
-		else if(mMrmGprsHandle1->bActor == MRM_MODE)
-			mMrmGprsHandle = mMrmGprsHandle1;
-		else
-			mLogInstance->Log("mrm mode is not right");
-
 		switch (PackageInfo.bServiceType)
 		{
 		case (byte) 0xE0:
@@ -1344,6 +1356,21 @@ void DataProcesser::subApplyForDataFromMMI(_RawInfo& PackageInfo)
 			break;
 		case (byte) 0x03://XXXXX
 			{
+				MrmGprsHandle* mMrmGprsHandle ;
+				if(mMrmGprsHandle0->bActor == MRM_MODE)
+				{
+					mMrmGprsHandle = mMrmGprsHandle0;
+
+					if(mMrmGprsHandle1->bActor == MRM_MODE)
+						mLogInstance->Log("mrm mode is not right");
+				}
+				else if(mMrmGprsHandle1->bActor == MRM_MODE)
+				{
+					mMrmGprsHandle = mMrmGprsHandle1;
+				}
+				else
+					mLogInstance->Log("mrm mode is not right");
+
 				switch (PackageInfo.bCommand)
 				{
 					case 0x03:////MMI摘挂断
@@ -1551,6 +1578,21 @@ void DataProcesser::subApplyForDataFromMMI(_RawInfo& PackageInfo)
 			break;
 		case (byte) 0x06: ////处理MMI发送的调度命令操作
 			{
+				MrmGprsHandle* mMrmGprsHandle ;
+				if(mMrmGprsHandle0->bActor == GPRS_MODE)
+				{
+					mMrmGprsHandle = mMrmGprsHandle0;
+
+					if(mMrmGprsHandle1->bActor == GPRS_MODE)
+						mLogInstance->Log("gprs mode is not right");
+				}
+				else if(mMrmGprsHandle1->bActor == GPRS_MODE)
+				{
+					mMrmGprsHandle = mMrmGprsHandle1;
+				}
+				else
+					mLogInstance->Log("gprs mode is not right");
+
 				switch (PackageInfo.bCommand)
 				{
 				case 0x51://自动确认
@@ -2037,12 +2079,6 @@ void DataProcesser::subApplyForDataFromGprs(_RawInfo& PackageInfo, byte bComingP
 				<< std::hex << std::setw(2) <<std::setfill('0')<<" bDectCode:"<<(int)PackageInfo.bDectCode
 				<< std::hex << std::setw(2) <<std::setfill('0')<<" bServiceType:"<<(int)PackageInfo.bServiceType
 				<< std::hex << std::setw(2) <<std::setfill('0')<<" bCommand:"<<(int)PackageInfo.bCommand<<std::endl;
-
-		MrmGprsHandle* mMrmGprsHandle ;
-		if(bComingPort == BOARD_ZH_LEFT)
-			mMrmGprsHandle = mMrmGprsHandle0;
-		else
-			mMrmGprsHandle = mMrmGprsHandle1;
 
 		switch (PackageInfo.bDectCode)
 		{

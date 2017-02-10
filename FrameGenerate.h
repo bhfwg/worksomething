@@ -44,6 +44,8 @@ public:
 			,int iResult, std::string operatorname);
 	void GetFrame_ATCommandToZhuanHuan(_SendData& pSendData, byte bDestCode,byte bZongXian, byte bPriority,byte bNeedAckFlag,byte bFrameType
 			,std::string strCommand);
+	void GetFrame_GprsDataToZhuanHuan(_SendData& pSendData, byte bDestCode,byte bZongXian, byte bPriority,byte bNeedAckFlag,byte bFrameType
+			,_SendDataNet& pSendDataNet);
 	void GetFrame_InitNetworkInfo(_SendData& pSendData, byte bDestCode,byte bZongXian, byte bPriority,byte bNeedAckFlag
 			,byte bFrameType);
 	void GetFrame_DispatchCommand(_SendData& pSendData, byte bDestCode, byte bZongXian, byte bPriority, byte bNeedAckFlag,byte bFrameType, _RawInfo& PackageInfo);
